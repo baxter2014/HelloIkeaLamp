@@ -17,12 +17,16 @@ left_gripper = baxter_interface.Gripper('left')
 
 #grab the left arm
 Llimb = baxter_interface.Limb('left')
-Langles = Llimb.joint_angles()
-Lvel = Llimb.joint_velocities()
+Langles = {'left_w0': 3.05415574519043, 'left_w1': -1.176179767767334, 'left_w2': -1.4319710638549805, 'left_e0': -1.4783739826354982, 'left_e1': 1.336480759918213, 'left_s0': 0.2676796471801758, 'left_s1': 0.11965050131835939}
+Llimb.move_to_joint_positions(Langles)
+
 
 #grab the right arm
 Rlimb = baxter_interface.Limb('right')
 Rangles = Rlimb.joint_angles()
+
+
+
 
 def rotateLeftGripper(self, rotationAng = 0.2):
 
@@ -50,6 +54,11 @@ def scrollWheel(self):
     print "hey, someone clicked on the scroll Wheel" 
     rotateLeftGripper(self)
 
+def pickFlower(self):
+    
+    print "button pushed"
+    map_file('../suctiontest2.txt')
+
 def setButtonHandlers(arm):
 # inputs
     _close_io = baxter_interface.DigitalIO('%s_upper_button' % (arm,)) # 'dash' btn
@@ -62,16 +71,20 @@ def setButtonHandlers(arm):
     Lnav.button0_changed.connect(scrollWheel)
     Lnav.wheel_changed.connect(wheel_moved)
 
+    Rnav = (baxter_interface.Navigator('right'))
+    Rnav.button0_changed.connect(pickFlower)
+
+
 def main():
-    
+
     #print("listening on the left arm")
     setButtonHandlers('left')
-    print ""
-    print Lvel
+
    
 
     lights = baxter_interface.DigitalIO('left_itb_light_outer')
     print "Initial state: ", lights.state
+
 
     #print("Press cuff buttons to control grippers. Spinning")
     rospy.spin()
@@ -127,10 +140,9 @@ def map_file(filename, loops=1):
     name/value pairs. Names come from the column headers
     first column is the time stamp
     """
-    left = baxter_interface.Limb('left')
-    right = baxter_interface.Limb('right')
-    grip_left = baxter_interface.Gripper('left', CHECK_VERSION)
-    grip_right = baxter_interface.Gripper('right', CHECK_VERSION)
+
+    grip_left = baxter_interface.Gripper('left')
+    grip_right = baxter_interface.Gripper('right')
     rate = rospy.Rate(1000)
 
     print("Playing back: %s" % (filename,))
@@ -146,7 +158,7 @@ def map_file(filename, loops=1):
         print("Moving to start position...")
 
         _cmd, lcmd_start, rcmd_start, _raw = clean_line(lines[1], keys)
-        Limb.move_to_joint_positions(lcmd_start)
+        #Llimb.move_to_joint_positions(lcmd_start)
         Rlimb.move_to_joint_positions(rcmd_start)
         start_time = rospy.get_time()
         for values in lines[1:]:
@@ -175,6 +187,30 @@ def map_file(filename, loops=1):
                 rate.sleep()
         print
     return True
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+
+
+
+
+
 
 
 
