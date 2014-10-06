@@ -9,7 +9,7 @@ import sys
 import math
 import rospy
 import  baxter_interface
-import NewArms
+
 
 rospy.init_node('hellowo', anonymous=True)
 
@@ -25,19 +25,127 @@ Lclosed = True
 #grab the left arm
 Llimb = baxter_interface.Limb('left')
 #set left limb to 'comfortable' position to get started with
-Langles = {'left_w0': 2.0793109556030274, 'left_w1': -1.4522963092712404, 'left_w2': -3.0533887547973633, 'left_e0': -0.17832526638793947, 'left_e1': 2.1414371774414063, 'left_s0': 0.22472818516845705, 'left_s1': -0.683388440222168}
+Langles = {'left_w0': 2.0793109556030274, 'left_w1': -1.4522963092712404, 'left_w2': -2.9, 'left_e0': -0.17832526638793947, 'left_e1': 2.1414371774414063, 'left_s0': 0.22472818516845705, 'left_s1': -0.683388440222168}
 Llimb.move_to_joint_positions(Langles)
 
 #grab the right arm
 Rlimb = baxter_interface.Limb('right')
 Rangles = {'right_s0': -0.12923788123168947, 'right_s1': -0.34361169609375003, 'right_w0': -1.1830826813049318, 'right_w1': 1.1347622865417482, 'right_w2': 2.5966459757263185, 'right_e0': 1.1581554935302736, 'right_e1': 1.3974564961669922}
 Rlimb.move_to_joint_positions(Rangles)
+Rnav = (baxter_interface.Navigator('right'))
 
 
+class Waypoints(object):
+    def __init__(self, limb, speed, accuracy):
+        # Create baxter_interface limb instance
+
+        self._arm = limb
+        self._limb = baxter_interface.Limb(self._arm)
+
+        # Parameters which will describe joint position moves
+        self._speed = speed
+        self._accuracy = accuracy
+
+        # Recorded waypoints
+        self._waypoints = list()
+
+        # Recording state
+        self._is_recording = False
+
+        # Verify robot is enabled
+        print("Getting robot state... ")
+        self._rs = baxter_interface.RobotEnable()
+        self._init_state = self._rs.state().enabled
+        print("Enabling robot... ")
+        self._rs.enable()
+        # Create Navigator I/O
+
+    def _record_waypoint(self, value):
+        """
+        Stores joint position waypoints
+
+        Navigator 'OK/Wheel' button callback
+        """
+        if value:
+            print("Waypoint Recorded")
+            self._waypoints.append(self._limb.joint_angles())
+
+    def _stop_recording(self, value):
+        """
+        Sets is_recording to false
+
+        Navigator 'Rethink' button callback
+        """
+        # On navigator Rethink button press, stop recording
+        print 'recording should stop'
+        if value:
+            self._is_recording = False
+
+    def record(self):
+        """
+        Records joint position waypoints upon each Navigator 'OK/Wheel' button
+        press.
+        """
+        rospy.loginfo("Waypoint Recording Started")
+        print("Press Navigator 'OK/Wheel' button to record a new joint "
+        "joint position waypoint.")
+        print("Press Navigator 'Rethink' button when finished recording "
+              "waypoints to begin playback")
+        # Connect Navigator I/O signals
+        # Navigator scroll wheel button press
+        # Rnav.button0_changed.connect(self._record_waypoint)
+        # Navigator Rethink button press
+        Rnav.button2_changed.connect(self._stop_recording)
+
+        # Set recording flag
+        self._is_recording = True
+
+        # Loop until waypoints are done being recorded ('Rethink' Button Press)
+        while self._is_recording and not rospy.is_shutdown():
+            rospy.sleep(0.1)
+
+        # We are now done with the navigator I/O signals, disconnecting them
+        Rnav.button0_changed.disconnect(self._record_waypoint)
+        Rnav.button2_changed.disconnect(self._stop_recording)
+
+    def playback(self):
+        """
+        Loops playback of recorded joint position waypoints until program is
+        exited
+        """
+        rospy.sleep(1.0)
+
+        rospy.loginfo("Waypoint Playback Started")
+        print("  Press Ctrl-C to stop...")
+
+        # Set joint position speed ratio for execution
+        self._limb.set_joint_position_speed(self._speed)
+
+        # Loop until program is exited
+        loop = 0
+        while not rospy.is_shutdown():
+            loop += 1
+            print("Waypoint playback loop #%d " % (loop,))
+            for waypoint in self._waypoints:
+                if rospy.is_shutdown():
+                    break
+                self._limb.move_to_joint_positions(waypoint, timeout=20.0,
+                                                   threshold=self._accuracy)
+            # Sleep for a few seconds between playback loops
+            rospy.sleep(3.0)
+
+        # Set joint position speed back to default
+        self._limb.set_joint_position_speed(0.3)
+
+    def clean_shutdown(self):
+        print("\nExiting example...")
+        if not self._init_state:
+            print("Disabling robot...")
+            self._rs.disable()
+        return True
 
 
-
-recorder = JointRecorder('../suctiontest2.txt', 80)
+recorder = Waypoints('right', 0.5, 0.1)
 recording = False
 
 
@@ -73,7 +181,7 @@ def scrollWheel(value):
 def pickFlower(value):
     if value:
         print "picking a flower"
-        map_file('../suctiontest2.txt')
+        recorder.playback()
 
 def toggleLeftGripper(value):
     global Lclosed
@@ -89,18 +197,20 @@ def toggleLeftGripper(value):
         Lclosed = True
 
 def recordNewFlowerPick(value):
-    global recording
-    if value and not recording:
-        print 'Im recording :D'
-        recorder.record()
-        recording = True
-    if value and recording:
-        print 'Im going to stop recording now and you can play me back'
-        recorder.stop()
-        recording = False
 
+    Rnav.button0_changed.disconnect(pickFlower)
+    Rnav.button2_changed.disconnect(recordNewFlowerPick)
 
+    Rnav.button2_changed.connect(fuckity)
+    recorder.record()
 
+    # Rnav.button0_changed.connect(pickFlower)
+    # Rnav.button2_changed.connect(recordNewFlowerPick)
+
+def fuckity(value):
+    if value:
+        print 'fuck'
+        recorder._stop_recording
 def setButtonHandlers(arm):
 # inputs
     if arm == 'left':
@@ -116,7 +226,7 @@ def setButtonHandlers(arm):
         Lnav.wheel_changed.connect(wheel_moved)
 
     elif arm == 'right':
-        Rnav = (baxter_interface.Navigator('right'))
+
         Rnav.button0_changed.connect(pickFlower)
         Rnav.button2_changed.connect(recordNewFlowerPick)
 
@@ -190,10 +300,10 @@ def clean_line(line, names):
     cleaned = [x for x in combined if x[1] is not None]
     #convert it to a dictionary with only valid commands
     command = dict(cleaned)
-    left_command = dict((key, command[key]) for key in command.keys()
-                        if key[:-2] == 'left_')
     right_command = dict((key, command[key]) for key in command.keys()
                          if key[:-2] == 'right_')
+    left_command = dict((key, command[key]) for key in command.keys()
+                         if key[:-2] == 'left_')
     return (command, left_command, right_command, line)
 
 
@@ -212,7 +322,6 @@ def map_file(filename, loops=1):
     first column is the time stamp
     """
 
-    grip_left = baxter_interface.Gripper('left')
     grip_right = baxter_interface.Gripper('right')
 
 
@@ -229,7 +338,7 @@ def map_file(filename, loops=1):
         i = 0
         l += 1
         print("Moving to start position...")
-
+        print clean_line(lines[1], keys)
         _cmd, lcmd_start, rcmd_start, _raw = clean_line(lines[1], keys)
         #Llimb.move_to_joint_positions(lcmd_start)
         Rlimb.move_to_joint_positions(rcmd_start)
@@ -251,23 +360,12 @@ def map_file(filename, loops=1):
                #    Llimb.set_joint_positions(lcmd)
                 if len(rcmd):
                     Rlimb.set_joint_positions(rcmd)
-                if ('left_gripper' in cmd and
-                    grip_left.type() != 'custom'):
-                    grip_left.command_position(cmd['left_gripper'])
                 if ('right_gripper' in cmd and
                     grip_right.type() != 'custom'):
                     grip_right.command_position(cmd['right_gripper'])
                 rate.sleep()
         print
     return True
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':
